@@ -11,17 +11,17 @@ import torch.nn as nn
 
 def weights_init(m):
     '''Randomly initialize Generator and Discriminator weights'''
-classname = m.__class__.__name__
-if classname.find('Conv') != -1:
-    m.weight.data.normal_(0.0, 0.02)
-elif classname.find('BatchNorm') != -1:
-    m.weight.data.normal_(1.0, 0.02)
-    m.bias.data.fill_(0)
+    classname = m.__class__.__name__
+    if classname.find('Conv') != -1:
+        m.weight.data.normal_(0.0, 0.02)
+    elif classname.find('BatchNorm') != -1:
+        m.weight.data.normal_(1.0, 0.02)
+        m.bias.data.fill_(0)
 
 class _netG(nn.Module):
     '''The Generator Network'''
 
-        def __init__(self, ngpu):
+    def __init__(self, ngpu, nz, ngf, nc):
         super(_netG, self).__init__()
         self.ngpu = ngpu
         self.main = nn.Sequential(
@@ -57,7 +57,7 @@ class _netG(nn.Module):
 class _netD(nn.Module):
     '''The Discriminator Network'''
 
-    def __init__(self, ngpu):
+    def __init__(self, ngpu, nz, ndf, nc):
         super(_netD, self).__init__()
         self.ngpu = ngpu
         self.main = nn.Sequential(

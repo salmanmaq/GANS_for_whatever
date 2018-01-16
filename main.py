@@ -22,9 +22,11 @@ import torch
 import torch.nn as nn
 import torch.nn.parallel
 import torch.backends.cudnn as cudnn
-import torch.optim
+import torch.optim as optim
 import torch.utils.data
 import torchvision.transforms as transforms
+import torchvision.utils as vutils
+from torch.autograd import Variable
 
 import dcgan
 from miccaiSegDataLoader import miccaiSegDataset
@@ -32,13 +34,13 @@ from miccaiSegDataLoader import miccaiSegDataset
 parser = argparse.ArgumentParser(description='PyTorch DCGAN Training')
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
             help='number of data loading workers (default: 4)')
-parser.add_argument('--epochs', default=20, type=int, metavar='N',
+parser.add_argument('--epochs', default=1000, type=int, metavar='N',
             help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
             help='manual epoch number (useful on restarts)')
-parser.add_argument('-b', '--batch-size', default=2, type=int, metavar='N',
-            help='mini-batch size (default: 2)')
-parser.add_argument('--image-size', default=64, type=int,
+parser.add_argument('--batchSize', default=16, type=int,
+            help='mini-batch size (default: 4)')
+parser.add_argument('--imageSize', default=64, type=int,
             help='height/width of the input image to the network')
 parser.add_argument('--nz', default=100, type=int,
             help='size of the latent z vector')
@@ -53,7 +55,7 @@ parser.add_argument('--netG', default='',
             help="path to netG (to continue training)")
 parser.add_argument('--netD', default='',
             help="path to netD (to continue training)")
-parser.add_argument('--manual-seed', type=int, help='manual seed')
+parser.add_argument('--manual_seed', type=int, help='manual seed')
 parser.add_argument('--print-freq', '-p', default=1, type=int, metavar='N',
             help='print frequency (default:1)')
 parser.add_argument('--resume', default='', type=str, metavar='PATH',
@@ -66,7 +68,6 @@ parser.add_argument('--save-dir', dest='save_dir',
             help='The directory used to save the trained models',
             default='save_temp', type=str)
 
-best_prec1 = np.inf
 use_gpu = torch.cuda.is_available()
 
 def main():
@@ -78,29 +79,26 @@ def main():
     if not os.path.exists(args.save_dir):
         os.makedirs(args.save_dir)
 
-    if args.manual-seed is None:
-        args.manual-seed = random.randint(1, 10000)
-    random.seed(opt.manual-seed)
-    torch.manual_seed(args.manual-seed)
+    if args.manual_seed is None:
+        args.manual_seed = random.randint(1, 10000)
+    random.seed(args.manual_seed)
+    torch.manual_seed(args.manual_seed)
     if use_gpu:
-        torch.manual_seed_all(args.manual-seed)
+        torch.cuda.manual_seed_all(args.manual_seed)
 
     cudnn.benchmark = True
 
-    if use_gpu:
-        model.cuda()
-
-    # Optionally resume from a checkpoint
-    if args.resume:
-        if os.path.isfile(args.resume):
-            print("=> loading checkpoint '{}'".format(args.resume))
-            checkpoint = torch.load(args.resume)
-            args.start_epoch = checkpoint['epoch']
-            best_prec1 = checkpoint['best_prec1']
-            model.load_state_dict(checkpoint['state_dict'])
-            print("=> loaded checkpoint '{}' (epoch {})".format(args.evaluate, checkpoint['epoch']))
-        else:
-            print("=> no checkpoint found at '{}'".format(args.resume))
+    # # Optionally resume from a checkpoint
+    # if args.resume:
+    #     if os.path.isfile(args.resume):
+    #         print("=> loading checkpoint '{}'".format(args.resume))
+    #         checkpoint = torch.load(args.resume)
+    #         args.start_epoch = checkpoint['epoch']
+    #         best_prec1 = checkpoint['best_prec1']
+    #         model.load_state_dict(checkpoint['state_dict'])
+    #         print("=> loaded checkpoint '{}' (epoch {})".format(args.evaluate, checkpoint['epoch']))
+    #     else:
+    #         print("=> no checkpoint found at '{}'".format(args.resume))
 
     cudnn.benchmark = True
 
@@ -123,11 +121,11 @@ def main():
 
     data_transforms = {
         'train': transforms.Compose([
-            transforms.Scale((args.image-size, args.image-size)),
+            transforms.Scale((args.imageSize, args.imageSize)),
             transforms.ToTensor(),
         ]),
         'test': transforms.Compose([
-            transforms.Scale((args.image-size, args.image-size)),
+            transforms.Scale((args.imageSize, args.imageSize)),
             transforms.ToTensor(),
         ]),
     }
@@ -138,367 +136,131 @@ def main():
                     for x in ['train', 'test']}
 
     dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x],
-                                                  batch_size=args.batch_size,
+                                                  batch_size=args.batchSize,
                                                   shuffle=True,
                                                   num_workers=args.workers)
-                  for x in ['train', 'val']}
-    dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val']}
+                  for x in ['train', 'test']}
+    dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'test']}
+
+    ngpu = int(args.ngpu)
+    nz = int(args.nz)
+    ngf = int(args.ngf)
+    ndf = int(args.ndf)
+    nc = 3
+
+    # Initialize the Generator Network
+    netG = dcgan._netG(ngpu, nz, ngf, nc)
+    netG.apply(dcgan.weights_init)
+    if args.netG != '':
+        netG.load_state_dict(torch.load(args.netG))
+    print(netG)
+
+    # Initialize the Discriminator Network
+    netD = dcgan._netD(ngpu, nz, ndf, nc)
+    netD.apply(dcgan.weights_init)
+    if args.netD != '':
+        netD.load_state_dict(torch.load(args.netD))
+    print(netD)
 
     # Define loss function (criterion) and optimizer
-    criterion = nn.MSELoss().cuda()
+    criterion = nn.BCELoss()
 
-    if args.half:
-        model.half()
-        criterion.half()
+    input = torch.FloatTensor(args.batchSize, 3, args.imageSize, args.imageSize)
+    noise = torch.FloatTensor(args.batchSize, nz, 1, 1)
+    fixed_noise = torch.FloatTensor(args.batchSize, nz, 1, 1).normal_(0, 1)
+    label = torch.FloatTensor(args.batchSize)
+    real_label = 1
+    fake_label = 0
 
-    #optimizer = torch.optim.SGD(model.parameters(), args.lr,
-    #                            momentum=args.momentum,
-    #                            weight_decay=args.weight_decay)
+    if use_gpu:
+        netD.cuda()
+        netG.cuda()
+        criterion.cuda()
+        input, label = input.cuda(), label.cuda()
+        noise, fixed_noise = noise.cuda(), fixed_noise.cuda()
 
-    optimizer = torch.optim.Adam(model.parameters(), lr = args.lr)
+    fixed_noise = Variable(fixed_noise)
 
-    if args.evaluate:
-        validate(dataloaders['val'], model, criterion)
-        return
+    # Define the optimizers for the Generator and the Discriminator
+    optimizerD = optim.Adam(netD.parameters(), lr=args.lr,
+                            betas=(args.beta1, 0.999))
+    optimizerG = optim.Adam(netG.parameters(), lr=args.lr,
+                            betas=(args.beta1, 0.999))
 
     for epoch in range(args.start_epoch, args.epochs):
-        #adjust_learning_rate(optimizer, epoch)
 
         # Train for one epoch
-        train(dataloaders['train'], model, criterion, optimizer, epoch)
+        train(dataloaders['train'], netG, netD, criterion, optimizerG,
+              optimizerD, epoch, input, noise, fixed_noise, label,
+              real_label, fake_label, nz)
 
-        # Evaulate on validation set
-        prec1 = validate(dataloaders['val'], model, criterion)
-        prec1 = prec1.cpu().data.numpy()
+        # Save checkpoints
+        torch.save(netG.state_dict(), '%s/netG_epoch_%d.pth' % (args.save_dir, epoch))
+        torch.save(netD.state_dict(), '%s/netD_epoch_%d.pth' % (args.save_dir, epoch))
 
-        # Remember best prec1 and save checkpoint
-        print(prec1)
-        print(best_prec1)
-        is_best = prec1 < best_prec1
-        best_prec1 = min(prec1, best_prec1)
-        save_checkpoint({
-            'epoch': epoch + 1,
-            'state_dict': model.state_dict(),
-            'best_prec1': best_prec1,
-        }, is_best, filename=os.path.join(args.save_dir, 'checkpoint_{}.tar'.format(epoch)))
-
-def train(train_loader, model, criterion, optimizer, epoch):
+def train(train_loader, netG, netD, criterion, optimizerG, optimizerD, epoch,
+        input, noise, fixed_noise, label, real_label, fake_label, nz):
     '''
         Run one training epoch
     '''
 
-    batch_time = AverageMeter()
-    data_time = AverageMeter()
-    losses = AverageMeter()
-    top1 = AverageMeter()
+    for i, (img, gt) in enumerate(train_loader):
 
-    # Switch to train mode
-    model.train()
+        ############################
+        # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
+        ###########################
+        # train with real
+        if use_gpu:
+            img = img.cuda()
+        netD.zero_grad()
+        real_cpu = img
+        batch_size = real_cpu.size(0)
+        if use_gpu:
+            real_cpu = real_cpu.cuda()
+        input.resize_as_(real_cpu).copy_(real_cpu)
+        label.resize_(batch_size).fill_(real_label)
+        inputv = Variable(input)
+        labelv = Variable(label)
 
-    end = time.time()
+        output = netD(inputv)
+        errD_real = criterion(output, labelv)
+        errD_real.backward()
+        D_x = output.data.mean()
 
-    for i, input in enumerate(train_loader):
-        # Measure Data loading time
-        data_time.update(time.time() - end)
-        target = input.cuda()
-        input_var = torch.autograd.Variable(input).cuda()
-        if args.half:
-            input_var = input_var.half()
+        # train with fake
+        noise.resize_(batch_size, nz, 1, 1).normal_(0, 1)
+        noisev = Variable(noise)
+        fake = netG(noisev)
+        labelv = Variable(label.fill_(fake_label))
+        output = netD(fake.detach())
+        errD_fake = criterion(output, labelv)
+        errD_fake.backward()
+        D_G_z1 = output.data.mean()
+        errD = errD_real + errD_fake
+        optimizerD.step()
 
-        target_varR, target_varG, target_varB = splitInput(target)
-        target_var = torch.autograd.Variable(target)
-        target_varR = torch.autograd.Variable(target_varR).cuda()
-        target_varG = torch.autograd.Variable(target_varG).cuda()
-        target_varB = torch.autograd.Variable(target_varB).cuda()
+        ############################
+        # (2) Update G network: maximize log(D(G(z)))
+        ###########################
+        netG.zero_grad()
+        labelv = Variable(label.fill_(real_label))  # fake labels are real for generator cost
+        output = netD(fake)
+        errG = criterion(output, labelv)
+        errG.backward()
+        D_G_z2 = output.data.mean()
+        optimizerG.step()
 
-        # Compute output
-        outputR, outputG, outputB = model(input_var)
-        lossR = criterion(outputR, target_varR)
-        lossG = criterion(outputG, target_varG)
-        lossB = criterion(outputB, target_varB)
-        loss = lossR + lossG + lossB
-
-        output = concatenateChannels(outputR, outputG, outputB)
+        print('[%d/%d][%d/%d] Loss_D: %.4f Loss_G: %.4f D(x): %.4f D(G(z)): %.4f / %.4f'
+              % (epoch, args.epochs, i, len(train_loader),
+                 errD.data[0], errG.data[0], D_x, D_G_z1, D_G_z2))
         if i % args.print_freq == 0:
-            displaySamples(target_var, output)
-
-        # Compute gradient and do SGD step
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        #output = output.float()
-        loss = loss.float()
-
-        # Measure accuracy and record loss
-        #prec1 = accuracy(output.data, target)[0]
-        losses.update(loss.data[0], input.size(0))
-        #top1.update(prec1[0], input.size(0))
-
-        # Measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
-
-        if i % args.print_freq == 0:
-            print('Epoch: [{0}][{1}/{2}]\t'
-                  'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                  'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
-                  'Loss {loss.val:.4f} ({loss.avg:.4f})'.format(
-                      epoch, i, len(train_loader), batch_time=batch_time,
-                      data_time=data_time, loss=losses))
-
-def validate(val_loader, model, criterion):
-    '''
-        Run evaluation
-    '''
-
-    batch_time = AverageMeter()
-    losses = AverageMeter()
-    top1 = AverageMeter()
-
-    # Switch to evaluate mode
-    model.eval()
-
-    end = time.time()
-    for i, input in enumerate(val_loader):
-        target = input.cuda()
-        input_var = torch.autograd.Variable(input, volatile=True).cuda()
-        if args.half:
-            input_var = input_var.half()
-
-        target_varR, target_varG, target_varB = splitInput(target)
-        target_var = torch.autograd.Variable(target)
-        target_varR = torch.autograd.Variable(target_varR, volatile=True).cuda()
-        target_varG = torch.autograd.Variable(target_varG, volatile=True).cuda()
-        target_varB = torch.autograd.Variable(target_varB, volatile=True).cuda()
-
-        # Compute output
-        outputR, outputG, outputB = model(input_var)
-        lossR = criterion(outputR, target_varR)
-        lossG = criterion(outputG, target_varG)
-        lossB = criterion(outputB, target_varB)
-        loss = lossR + lossG + lossB
-
-        output = concatenateChannels(outputR, outputG, outputB)
-
-        output = output.float()
-        loss = loss.float()
-
-        if i % args.print_freq == 0:
-            displaySamples(target_var, output)
-
-        # Measure accuracy and record loss
-        #prec1 = accuracy(output.data, target)[0]
-        losses.update(loss.data[0], input.size(0))
-        #top1.update(prec1[0], input.size(0))
-
-        # Measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
-
-        if i % args.print_freq == 0:
-            print('Test: [{0}/{1}]\t'
-                  'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                  'Loss {loss.val:.4f} ({loss.avg:.4f})'.format(
-                      i, len(val_loader), batch_time=batch_time,
-                      loss=losses))
-
-    return loss
-
-def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
-    '''
-        Save the training model
-    '''
-    torch.save(state, filename)
-
-class AverageMeter(object):
-    '''
-        Computes and stores the average and current value
-    '''
-
-    def __init__(self):
-        self.reset()
-
-    def reset(self):
-        self.val = 0
-        self.avg = 0
-        self.sum = 0
-        self.count = 0
-
-    def update(self, val, n=1):
-        self.val = val
-        self.sum += val * n
-        self.count += n
-        self.avg = self.sum / self.count
-
-def adjust_learning_rate(optimizer, epoch):
-    '''
-        Sets the learning rate to the initial LR decayed by a factor of 10
-        every 30 epochs
-    '''
-
-    lr = args.lr * (0.5 ** (epoch // 30))
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
-
-def accuracy(output, target, topk=(1,)):
-    '''
-        Computes the precision@k for the specified values of k
-    '''
-
-    maxk = max(topk)
-    batch_size = target.size(0)
-
-    _, pred = output.topk(maxk, 1, True, True)
-    pred = pred.t()
-    correct = pred.eq(target.view(1, -1).expand_as(pred))
-
-    res = []
-    for k in topk:
-        correct_k = correct[:k].view(-1).float().sum(0)
-        res.append(correct_k.mul_(100.0 / batch_size))
-
-    return res
-
-def displaySamples(input, output):
-    ''' Display the original and the reconstructed image.
-        If a batch is used, it displays only the first image in the batch.
-
-        Args:
-            input image, output image
-    '''
-    if use_gpu:
-        input = input.cpu()
-        output = output.cpu()
-
-    unNorm = UnNormalize(mean=[0.485,0.456,0.406],std=[0.229,0.224,0.225])
-
-    input = input.data.numpy()
-    input = np.transpose(np.squeeze(input[0,:,:,:]), (1,2,0))
-    input = cv2.cvtColor(input, cv2.COLOR_BGR2RGB)
-    #input = unNorm(input)
-
-    output = output.data.numpy()
-    output = np.transpose(np.squeeze(output[0,:,:,:]), (1,2,0))
-    output = cv2.cvtColor(output, cv2.COLOR_BGR2RGB)
-    #output = unNorm(output)
-
-    cv2.namedWindow('Input Image', cv2.WINDOW_NORMAL)
-    cv2.namedWindow('Reconstructed Image', cv2.WINDOW_NORMAL)
-
-    cv2.imshow('Input Image', input)
-    cv2.imshow('Reconstructed Image', output)
-    cv2.waitKey(1)
-
-def concatenateChannels(r, g, b):
-    '''
-        Concatenate the R, G, and B channels to form an RGB Image
-        for channel-wise reconstruction experiments.
-
-        Args:
-            R-channel Tensor, G-channel Tensor, B-channel Tensor
-
-        Retuns RGB PyTorch Tensor
-    '''
-
-    return torch.cat((r,g,b), 1)
-
-def splitInput(input):
-    '''
-        Splits an Input Image PyTorch Tensor into it's constituent channels
-        RGB.
-    '''
-
-    if use_gpu:
-        input = input.cpu()
-
-    input = input.numpy()
-
-    # Iterate over each image tensor in a batch
-    channelR = np.expand_dims(np.zeros((input.shape[2], input.shape[3])), axis=0)
-    channelG = np.expand_dims(np.zeros((input.shape[2], input.shape[3])), axis=0)
-    channelB = np.expand_dims(np.zeros((input.shape[2], input.shape[3])), axis=0)
-
-    #print(channelR)
-
-    for i in range(args.batch_size):
-
-        img = input[i,:,:,:]
-
-        channelR = np.concatenate((channelR, np.expand_dims(img[0,:,:], axis = 0)), 0)
-        channelG = np.concatenate((channelG, np.expand_dims(img[1,:,:], axis = 0)), 0)
-        channelB = np.concatenate((channelB, np.expand_dims(img[2,:,:], axis = 0)), 0)
-
-    # Strip the extra empty channel added initially
-    channelR = channelR[1:,:,:]
-    channelG = channelG[1:,:,:]
-    channelB = channelB[1:,:,:]
-
-    # Convert back to torch tensors
-    channelR = torch.from_numpy(channelR).float()
-    channelG = torch.from_numpy(channelG).float()
-    channelB = torch.from_numpy(channelB).float()
-
-    return channelR, channelG, channelB
-
-#TODO: Move auxillary code to utils
-
-def imagetoLabelTesnor(input):
-    '''
-        Splits the input image into the three RGB channels, and then
-        converts each channel into a one-hot tensor representing the
-        pixel distribution in the image. Useful for channel-wise
-        prediction.
-
-        Args:
-            seg: The segmented RGB image
-
-        Output:
-            The one-hot tensor representation of the image
-    '''
-
-    r, g, b = splitInput(input)
-
-
-def segmentedImagetoLabel(seg):
-    '''
-        Gets the segmented image and returns the one-hot tensor representing
-        the segmented distribution.
-
-        Args:
-            seg: The segmented RGB image
-
-        Output:
-            The one-hot tensor representation of the image
-    '''
-
-    if use_gpu:
-        seg = seg.cpu()
-
-    seg = seg.data.numpy()
-
-
-
-
-class UnNormalize(object):
-    def __init__(self, mean, std):
-        self.mean = mean
-        self.std = std
-
-    def __call__(self, image):
-        """
-        Args:
-            image (Image): Numpy ndarray of size (H, W, C) to be normalized.
-        Returns:
-            Numpy ndarray: Normalized image.
-        """
-        im = np.zeros_like(image)
-        for i in range(image.shape[2]):
-            im[i,:,:] = np.maximum(np.zeros_like(image[i,:,:]),
-            np.minimum(np.ones_like(image[i,:,:]),
-            (image[i,:,:] * self.mean[i]) + self.std[i]))
-            # The normalize code -> t.sub_(m).div_(s)
-        return im
+            vutils.save_image(real_cpu,
+                    '%s/real_samples.png' % args.save_dir,
+                    normalize=True)
+            fake = netG(fixed_noise)
+            vutils.save_image(fake.data,
+                    '%s/fake_samples_epoch_%03d.png' % (args.save_dir, epoch),
+                    normalize=True)
 
 if __name__ == '__main__':
     main()

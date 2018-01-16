@@ -23,7 +23,7 @@ class miccaiSegDataset(Dataset):
 
         self.root_dir = root_dir
         self.img_dir = os.path.join(root_dir, 'images')
-        self.gt_dir = os.path.join(root_dir, 'gt')
+        self.gt_dir = os.path.join(root_dir, 'groundtruth')
         self.image_list = [f for f in os.listdir(self.img_dir) if (f.endswith('.png') or f.endswith('.jpg'))]
         self.transform = transform
 
