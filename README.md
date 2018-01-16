@@ -9,6 +9,7 @@ Code adapted from PyTorch DCGAN example (https://github.com/pytorch/examples/tre
 ## Dataset
 
 Currently, the miccaiSeg dataset is in development, but would be open-sourced later.
+You can modify the miccaiSegDataLoader class to use the code on your own dataset.
 
 ## Usage
 ```
@@ -35,6 +36,5 @@ optional arguments:
   --netD NETD           Path to netD (to continue training)
   --print-freq          Frequency with which to print training statistics and save the generated samples
   --save-dir SAVE_DIR   Directory to save the model and generated samples
-
 
 ```
