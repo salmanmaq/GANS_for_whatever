@@ -36,21 +36,22 @@ parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
             help='number of data loading workers (default: 4)')
 parser.add_argument('--epochs', default=1000, type=int, metavar='N',
             help='number of total epochs to run')
-parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
-            help='manual epoch number (useful on restarts)')
 parser.add_argument('--batchSize', default=16, type=int,
             help='mini-batch size (default: 4)')
 parser.add_argument('--imageSize', default=64, type=int,
             help='height/width of the input image to the network')
 parser.add_argument('--nz', default=100, type=int,
             help='size of the latent z vector')
-parser.add_argument('--ngf', default=64, type=int)
-parser.add_argument('--ndf', default=64, type=int)
+parser.add_argument('--ngf', default=64, type=int,
+            help='Generator Feature Map depth (default: 64)')
+parser.add_argument('--ndf', default=64, type=int,
+            help='Discriminator Feature Map depth (default: 64)')
 parser.add_argument('--lr', default=0.0002, type=float,
             help='learning rate (default: 0.0002)')
 parser.add_argument('--beta1', default=0.5, type=float,
             help='beta1 for adam (default: 0.5)')
-parser.add_argument('--ngpu', type=int, default=1, help='number of GPUs to use')
+parser.add_argument('--ngpu', type=int, default=1,
+            help='number of GPUs to use')
 parser.add_argument('--netG', default='',
             help="path to netG (to continue training)")
 parser.add_argument('--netD', default='',
@@ -58,12 +59,6 @@ parser.add_argument('--netD', default='',
 parser.add_argument('--manual_seed', type=int, help='manual seed')
 parser.add_argument('--print-freq', '-p', default=1, type=int, metavar='N',
             help='print frequency (default:1)')
-parser.add_argument('--resume', default='', type=str, metavar='PATH',
-            help='path to latest checkpoint (default: none)')
-parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
-            help='evaluate model on validation set')
-parser.add_argument('--pre-trained', dest='pretrained', action='store_true',
-            help='use pre-trained model')
 parser.add_argument('--save-dir', dest='save_dir',
             help='The directory used to save the trained models',
             default='save_temp', type=str)
