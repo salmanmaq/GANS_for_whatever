@@ -31,13 +31,16 @@ from torch.autograd import Variable
 import dcgan
 from miccaiSegDataLoader import miccaiSegDataset
 
+# TODO: Fix the fixed input size error
 parser = argparse.ArgumentParser(description='PyTorch DCGAN Training')
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
             help='number of data loading workers (default: 4)')
-parser.add_argument('--epochs', default=1000, type=int, metavar='N',
+parser.add_argument('--epochs', default=250, type=int, metavar='N',
             help='number of total epochs to run')
+parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
+            help='manual epoch number (useful on restarts)')
 parser.add_argument('--batchSize', default=16, type=int,
-            help='mini-batch size (default: 4)')
+            help='mini-batch size (default: 16)')
 parser.add_argument('--imageSize', default=64, type=int,
             help='height/width of the input image to the network')
 parser.add_argument('--nz', default=100, type=int,
@@ -94,8 +97,6 @@ def main():
     #         print("=> loaded checkpoint '{}' (epoch {})".format(args.evaluate, checkpoint['epoch']))
     #     else:
     #         print("=> no checkpoint found at '{}'".format(args.resume))
-
-    cudnn.benchmark = True
 
     # data_transforms = {
     #     'train': transforms.Compose([
@@ -190,8 +191,8 @@ def main():
               real_label, fake_label, nz)
 
         # Save checkpoints
-        torch.save(netG.state_dict(), '%s/netG_epoch_%d.pth' % (args.save_dir, epoch))
-        torch.save(netD.state_dict(), '%s/netD_epoch_%d.pth' % (args.save_dir, epoch))
+        #torch.save(netG.state_dict(), '%s/netG_epoch_%d.pth' % (args.save_dir, epoch))
+        #torch.save(netD.state_dict(), '%s/netD_epoch_%d.pth' % (args.save_dir, epoch))
 
 def train(train_loader, netG, netD, criterion, optimizerG, optimizerD, epoch,
         input, noise, fixed_noise, label, real_label, fake_label, nz):
@@ -205,8 +206,10 @@ def train(train_loader, netG, netD, criterion, optimizerG, optimizerD, epoch,
         # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
         ###########################
         # train with real
+        gt = gt.view(-1, 1).squeeze(1)
         if use_gpu:
             img = img.cuda()
+            gt = gt.cuda()
         netD.zero_grad()
         real_cpu = img
         batch_size = real_cpu.size(0)
@@ -223,6 +226,7 @@ def train(train_loader, netG, netD, criterion, optimizerG, optimizerD, epoch,
         D_x = output.data.mean()
 
         # train with fake
+        noise = gt
         noise.resize_(batch_size, nz, 1, 1).normal_(0, 1)
         noisev = Variable(noise)
         fake = netG(noisev)
