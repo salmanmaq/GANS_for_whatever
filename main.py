@@ -32,6 +32,9 @@ import dcgan
 from miccaiSegDataLoader import miccaiSegDataset
 
 # TODO: Fix the fixed input size error
+# TODO: View the input and output together (to better verify the reconstruction)
+# TODO: Incremental training over different network layers
+
 parser = argparse.ArgumentParser(description='PyTorch DCGAN Training')
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
             help='number of data loading workers (default: 4)')
@@ -65,6 +68,8 @@ parser.add_argument('--print-freq', '-p', default=1, type=int, metavar='N',
 parser.add_argument('--save-dir', dest='save_dir',
             help='The directory used to save the trained models',
             default='save_temp', type=str)
+parser.add_argument('--verbose', default = False, type=bool,
+            help='Prints certain messages which user can specify if true')
 
 use_gpu = torch.cuda.is_available()
 
@@ -116,7 +121,7 @@ def main():
     # }
 
     data_transforms = {
-        'train': transforms.Compose([
+        'trainval': transforms.Compose([
             transforms.Scale((args.imageSize, args.imageSize)),
             transforms.ToTensor(),
         ]),
@@ -129,14 +134,14 @@ def main():
     data_dir = 'miccaiSeg'
 
     image_datasets = {x: miccaiSegDataset(os.path.join(data_dir, x), data_transforms[x])
-                    for x in ['train', 'test']}
+                    for x in ['trainval', 'test']}
 
     dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x],
                                                   batch_size=args.batchSize,
                                                   shuffle=True,
                                                   num_workers=args.workers)
-                  for x in ['train', 'test']}
-    dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'test']}
+                  for x in ['trainval', 'test']}
+    dataset_sizes = {x: len(image_datasets[x]) for x in ['trainval', 'test']}
 
     ngpu = int(args.ngpu)
     nz = int(args.nz)
@@ -186,7 +191,7 @@ def main():
     for epoch in range(args.start_epoch, args.epochs):
 
         # Train for one epoch
-        train(dataloaders['train'], netG, netD, criterion, optimizerG,
+        train(dataloaders['trainval'], netG, netD, criterion, optimizerG,
               optimizerD, epoch, input, noise, fixed_noise, label,
               real_label, fake_label, nz)
 
@@ -207,6 +212,9 @@ def train(train_loader, netG, netD, criterion, optimizerG, optimizerD, epoch,
         ###########################
         # train with real
         gt = gt.view(-1, 1).squeeze(1)
+        if args.verbose:
+            print('GT shape')
+            print(gt.shape)
         if use_gpu:
             img = img.cuda()
             gt = gt.cuda()
@@ -221,6 +229,9 @@ def train(train_loader, netG, netD, criterion, optimizerG, optimizerD, epoch,
         labelv = Variable(label)
 
         output = netD(inputv)
+        if args.verbose:
+            print('Output size - real: ')
+            print(output.data.shape)
         errD_real = criterion(output, labelv)
         errD_real.backward()
         D_x = output.data.mean()
@@ -228,10 +239,19 @@ def train(train_loader, netG, netD, criterion, optimizerG, optimizerD, epoch,
         # train with fake
         noise = gt
         noise.resize_(batch_size, nz, 1, 1).normal_(0, 1)
+        if args.verbose:
+            print('Noise Reshaped: ')
+            print(noise.shape)
         noisev = Variable(noise)
         fake = netG(noisev)
+        if args.verbose:
+            print('Fake img size: ')
+            print(fake.data.shape)
         labelv = Variable(label.fill_(fake_label))
         output = netD(fake.detach())
+        if args.verbose:
+            print('Output size - fake: ')
+            print(output.data.shape)
         errD_fake = criterion(output, labelv)
         errD_fake.backward()
         D_G_z1 = output.data.mean()
