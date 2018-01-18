@@ -30,6 +30,7 @@ from torch.autograd import Variable
 
 import dcgan
 from miccaiSegDataLoader import miccaiSegDataset
+import utils
 
 # TODO: Fix the fixed input size error
 # TODO: View the input and output together (to better verify the reconstruction)
@@ -211,6 +212,7 @@ def train(train_loader, netG, netD, criterion, optimizerG, optimizerD, epoch,
         # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
         ###########################
         # train with real
+        gtForViz = gt
         gt = gt.view(-1, 1).squeeze(1)
         if args.verbose:
             print('GT shape')
@@ -236,8 +238,12 @@ def train(train_loader, netG, netD, criterion, optimizerG, optimizerD, epoch,
         errD_real.backward()
         D_x = output.data.mean()
 
-        # train with fake
+        # train with fake'
         noise = gt
+        if args.verbose:
+            print('GT noise shape')
+            print(gt.shape)
+        noiseForViz = noise.resize_(batch_size, nz, 1, 1)
         noise.resize_(batch_size, nz, 1, 1).normal_(0, 1)
         if args.verbose:
             print('Noise Reshaped: ')
@@ -276,10 +282,12 @@ def train(train_loader, netG, netD, criterion, optimizerG, optimizerD, epoch,
             vutils.save_image(real_cpu,
                     '%s/real_samples.png' % args.save_dir,
                     normalize=True)
-            fake = netG(fixed_noise)
+            #fake = netG(fixed_noise)
             vutils.save_image(fake.data,
                     '%s/fake_samples_epoch_%03d.png' % (args.save_dir, epoch),
                     normalize=True)
+            utils.displaySamples(real_cpu, fake, noiseForViz, gtForViz, use_gpu)
+
 
 if __name__ == '__main__':
     main()
