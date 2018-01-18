@@ -75,7 +75,7 @@ parser.add_argument('--verbose', default = False, type=bool,
 use_gpu = torch.cuda.is_available()
 
 def main():
-    global args, best_prec1
+    global args
     args = parser.parse_args()
     print(args)
 
@@ -132,7 +132,7 @@ def main():
         ]),
     }
 
-    data_dir = 'miccaiSeg'
+    data_dir = 'Dataset/miccaiSeg'
 
     image_datasets = {x: miccaiSegDataset(os.path.join(data_dir, x), data_transforms[x])
                     for x in ['trainval', 'test']}
