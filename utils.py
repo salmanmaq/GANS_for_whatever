@@ -5,7 +5,7 @@ Utilites for data visualization and manipulation.
 import numpy as np
 import cv2
 
-def displaySamples(real, generated, seg_mask, use_gpu):
+def displaySamples(real, generated, genSeg, seg_mask, use_gpu):
     ''' Display the original and the reconstructed image.
         If a batch is used, it displays only the first image in the batch.
 
@@ -17,6 +17,7 @@ def displaySamples(real, generated, seg_mask, use_gpu):
         real = real.cpu()
         generated = generated.cpu()
         seg_mask = seg_mask.cpu()
+        genSeg = genSeg.cpu()
 
     #unNorm = UnNormalize(mean=[0.485,0.456,0.406],std=[0.229,0.224,0.225])
 
@@ -39,15 +40,19 @@ def displaySamples(real, generated, seg_mask, use_gpu):
     generated = cv2.cvtColor(generated, cv2.COLOR_BGR2RGB)
     #output = unNorm(output)
 
+    genSeg = genSeg.data.numpy()
+    genSeg = np.transpose(np.squeeze(genSeg[0,:,:,:]), (1,2,0))
+    genSeg = cv2.cvtColor(genSeg, cv2.COLOR_BGR2RGB)
+
     real = real.numpy()
     real = np.transpose(np.squeeze(real[0,:,:,:]), (1,2,0))
     real = cv2.cvtColor(real, cv2.COLOR_BGR2RGB)
     #real = unNorm(real)
 
-    stacked = np.concatenate((seg_mask, generated, real), axis = 1)
+    stacked = np.concatenate((seg_mask, generated, genSeg, real), axis = 1)
 
-    cv2.namedWindow('Seg | Gen | Real', cv2.WINDOW_NORMAL)
-    cv2.imshow('Seg | Gen | Real', stacked)
+    cv2.namedWindow('Seg | Gen | GenSeg | Real', cv2.WINDOW_NORMAL)
+    cv2.imshow('Seg | Gen | GenSeg | Real', stacked)
 
     # cv2.namedWindow('Real Image', cv2.WINDOW_NORMAL)
     # cv2.namedWindow('Reconstructed Image', cv2.WINDOW_NORMAL)
@@ -58,3 +63,11 @@ def displaySamples(real, generated, seg_mask, use_gpu):
     # cv2.imshow('Segmentation Mask', seg_mask)
 
     cv2.waitKey(1)
+
+#TODO: Complete this
+def generateOneHot(batch):
+    '''
+        Generates the one-hot encoded tensor for the segmentation classes
+        for a batch of images
+    '''
+    
