@@ -223,8 +223,8 @@ def main():
               nz)
 
         # Save checkpoints
-        #torch.save(netG.state_dict(), '%s/netG_epoch_%d.pth' % (args.save_dir, epoch))
-        #torch.save(netD.state_dict(), '%s/netD_epoch_%d.pth' % (args.save_dir, epoch))
+        torch.save(netG.state_dict(), '%s/netG_epoch_%d.pth' % (args.save_dir, epoch))
+        torch.save(netD.state_dict(), '%s/netD_epoch_%d.pth' % (args.save_dir, epoch))
 
 def train(train_loader, netG, netD, criterion, criterion_L1, optimizerG,
         optimizerD, epoch, input, noise, fixed_noise, label, nz):
