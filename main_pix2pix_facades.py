@@ -73,6 +73,10 @@ parser.add_argument('--labelSmoothing', default='False', type=str,
             help='Use label smoothing or not')
 parser.add_argument('--verbose', default='False', type=str,
             help='Prints certain messages which user can specify if true')
+parser.add_argument('--useL1', default='False', type=str,
+            help='Use L1 loss for generator or not')
+parser.add_argument('--Lambda', default=10, type=int,
+            help='Lambda parameter to weigh the L1 loss')
 
 use_gpu = torch.cuda.is_available()
 
@@ -89,6 +93,11 @@ if args.labelSmoothing == 'True':
     args.labelSmoothing = True
 elif args.labelSmoothing == 'False':
     args.labelSmoothing = False
+
+if args.useL1 == 'True':
+    args.useL1 = True
+elif args.useL1 == 'False':
+    args.useL1 = False
 
 def main():
 
@@ -209,7 +218,7 @@ def main():
     for epoch in range(args.start_epoch, args.epochs):
 
         # Train for one epoch
-        train(dataloaders['train'], netG, netD, criterion, optimizerG,
+        train(dataloaders['train'], netG, netD, criterion, criterion_L1, optimizerG,
               optimizerD, epoch, input, noise, fixed_noise, label,
               nz)
 
@@ -217,8 +226,8 @@ def main():
         #torch.save(netG.state_dict(), '%s/netG_epoch_%d.pth' % (args.save_dir, epoch))
         #torch.save(netD.state_dict(), '%s/netD_epoch_%d.pth' % (args.save_dir, epoch))
 
-def train(train_loader, netG, netD, criterion, optimizerG, optimizerD, epoch,
-        input, noise, fixed_noise, label, nz):
+def train(train_loader, netG, netD, criterion, criterion_L1, optimizerG,
+        optimizerD, epoch, input, noise, fixed_noise, label, nz):
     '''
         Run one training epoch
     '''
@@ -250,6 +259,7 @@ def train(train_loader, netG, netD, criterion, optimizerG, optimizerD, epoch,
         if use_gpu:
             real_cpu = real_cpu.cuda()
         input.resize_as_(real_cpu).copy_(real_cpu)
+        input.normal_(-1, 1)
         label.resize_(batch_size).fill_(real_label)
         inputv = Variable(input)
         labelv = Variable(label)
@@ -280,6 +290,8 @@ def train(train_loader, netG, netD, criterion, optimizerG, optimizerD, epoch,
         noise.normal_(-1, 1)
         noisev = Variable(noise)
         fake = netG(noisev)
+        #fakeForViz = fake.detach().normal_(0, 1)
+        fakeForViz = fake
         if args.verbose:
             print('Fake img size: ')
             print(fake.data.shape)
@@ -291,7 +303,11 @@ def train(train_loader, netG, netD, criterion, optimizerG, optimizerD, epoch,
         errD_fake = criterion(output, labelv)
         errD_fake.backward()
         D_G_z1 = output.data.mean()
-        errD = errD_real + errD_fake
+        if args.useL1:
+            errL1 = criterion_L1(input, fake.detach())
+            errD = errD_real + errD_fake + args.Lambda * errL1
+        else:
+            errD = errD_real + errD_fake
         optimizerD.step()
 
         ############################
@@ -300,12 +316,20 @@ def train(train_loader, netG, netD, criterion, optimizerG, optimizerD, epoch,
         netG.zero_grad()
         labelv = Variable(label.fill_(real_label))  # fake labels are real for generator cost
         output = netD(fake)
-        errG = criterion(output, labelv)
+        if args.useL1:
+            errG = criterion(output, labelv) + args.Lambda * errL1
+        else:
+            errG = criterion(output, labelv)
         errG.backward()
         D_G_z2 = output.data.mean()
         optimizerG.step()
 
-        print('[%d/%d][%d/%d] Loss_D: %.4f Loss_G: %.4f D(x): %.4f D(G(z)): %.4f / %.4f'
+        if args.useL1:
+            print('[%d/%d][%d/%d] Loss_D: %.4f Loss_G: %.4f Loss_L1: %.4f D(x): %.4f D(G(z)): %.4f / %.4f'
+                  % (epoch, args.epochs, i, len(train_loader),
+                     errD.data[0], errG.data[0], errL1.data[0], D_x, D_G_z1, D_G_z2))
+        else:
+            print('[%d/%d][%d/%d] Loss_D: %.4f Loss_G: %.4f D(x): %.4f D(G(z)): %.4f / %.4f'
               % (epoch, args.epochs, i, len(train_loader),
                  errD.data[0], errG.data[0], D_x, D_G_z1, D_G_z2))
         if i % args.print_freq == 0:
@@ -316,7 +340,7 @@ def train(train_loader, netG, netD, criterion, optimizerG, optimizerD, epoch,
             vutils.save_image(fake.data,
                     '%s/fake_samples_epoch_%03d.png' % (args.save_dir, epoch),
                     normalize=True)
-            utils.displaySamples(real_cpu, fake, gtForViz, use_gpu)
+            utils.displaySamples(real_cpu, fakeForViz, gtForViz, use_gpu)
 
 
 if __name__ == '__main__':
