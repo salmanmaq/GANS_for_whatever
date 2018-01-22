@@ -13,6 +13,7 @@ https://arxiv.org/abs/1611.07004
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from .unet_parts import *
 
@@ -28,8 +29,9 @@ def weights_init(m):
 class _netG(nn.Module):
     '''The Generator Network based on UNet Architecture'''
 
-    def __init__(self):
+    def __init__(self, verbose):
         super(_netG, self).__init__()
+        self.verbose = verbose
         self.inc = inconv(3, 64)
         self.down1 = down(64, 128)
         self.down2 = down(128, 256)
@@ -42,17 +44,42 @@ class _netG(nn.Module):
         self.outc = outconv(64, 3)
 
     def forward(self, x):
+        if self.verbose:
+            print('Network Forward pass:')
+            print(x.data.shape)
         x1 = self.inc(x)
+        if self.verbose:
+            print(x1.data.shape)
         x2 = self.down1(x1)
+        if self.verbose:
+            print(x2.data.shape)
         x3 = self.down2(x2)
+        if self.verbose:
+            print(x2.data.shape)
         x4 = self.down3(x3)
+        if self.verbose:
+            print(x4.data.shape)
         x5 = self.down4(x4)
+        if self.verbose:
+            print(x5.data.shape)
         x = self.up1(x5, x4)
+        if self.verbose:
+            print(x.data.shape)
         x = self.up2(x, x3)
+        if self.verbose:
+            print(x.data.shape)
         x = self.up3(x, x2)
+        if self.verbose:
+            print(x.data.shape)
         x = self.up4(x, x1)
+        if self.verbose:
+            print(x.data.shape)
         x = self.outc(x)
-        x = nn.Tanh(x)
+        if self.verbose:
+            print(x.data.shape)
+        x = F.tanh(x)
+        if self.verbose:
+            print(x.data.shape)
         return x
 
 class _netD(nn.Module):

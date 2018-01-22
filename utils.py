@@ -5,7 +5,7 @@ Utilites for data visualization and manipulation.
 import numpy as np
 import cv2
 
-def displaySamples(real, generated, gt_noise, seg_mask, use_gpu):
+def displaySamples(real, generated, seg_mask, use_gpu):
     ''' Display the original and the reconstructed image.
         If a batch is used, it displays only the first image in the batch.
 

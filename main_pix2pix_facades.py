@@ -32,7 +32,6 @@ import models.pix2pix as pix2pix
 from facadesDataLoader import facadesDataset
 import utils
 
-# TODO: Fix the fixed input size error
 # TODO: Incremental training over different network layers
 
 parser = argparse.ArgumentParser(description='PyTorch DCGAN Training')
@@ -68,6 +67,8 @@ parser.add_argument('--print-freq', '-p', default=1, type=int, metavar='N',
 parser.add_argument('--save-dir', dest='save_dir',
             help='The directory used to save the trained models',
             default='save_temp', type=str)
+parser.add_argument('--inputType', default = 'segM', type=str,
+            help='Use either random noise or the segmentation mask as input')
 parser.add_argument('--verbose', default = False, type=bool,
             help='Prints certain messages which user can specify if true')
 
@@ -154,7 +155,7 @@ def main():
     nc = 3
 
     # Initialize the Generator Network
-    netG = pix2pix._netG()
+    netG = pix2pix._netG(args.verbose)
     netG.apply(pix2pix.weights_init)
     if args.netG != '':
         netG.load_state_dict(torch.load(args.netG))
@@ -240,16 +241,22 @@ def train(train_loader, netG, netD, criterion, optimizerG, optimizerD, epoch,
         errD_real.backward()
         D_x = output.data.mean()
 
-        # train with fake'
-        noise = gt
-        if args.verbose:
-            print('GT noise shape')
-            print(gt.shape)
+        # train with fake
+        if args.inputType == 'segM':
+            noise = gt
+            if args.verbose:
+                print('GT noise shape')
+                print(gt.shape)
+            if args.verbose:
+                print('Noise Reshaped: ')
+                print(noise.shape)
+        else:
+            noise = torch.randn(batch_size, 3, args.imageSize, args.imageSize)
+
+        if use_gpu:
+            noise = noise.cuda()
         #noiseForViz = noise.resize_(batch_size, nz, 1, 1)
-        #noise.resize_(batch_size, nz, 1, 1).normal_(0, 1)
-        if args.verbose:
-            print('Noise Reshaped: ')
-            print(noise.shape)
+        #noise.normal_(-1, 1)
         noisev = Variable(noise)
         fake = netG(noisev)
         if args.verbose:

@@ -254,6 +254,7 @@ def train(train_loader, netG, netD, criterion, optimizerG, optimizerD, epoch,
             print(noise.shape)
         noisev = Variable(noise)
         fake = netG(noisev)
+        print(fake)
         if args.verbose:
             print('Fake img size: ')
             print(fake.data.shape)
