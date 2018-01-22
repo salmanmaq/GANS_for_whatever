@@ -259,7 +259,7 @@ def train(train_loader, netG, netD, criterion, criterion_L1, optimizerG,
         if use_gpu:
             real_cpu = real_cpu.cuda()
         input.resize_as_(real_cpu).copy_(real_cpu)
-        input.normal_(-1, 1)
+        #input.normal_(-1, 1)
         label.resize_(batch_size).fill_(real_label)
         inputv = Variable(input)
         labelv = Variable(label)
@@ -287,11 +287,9 @@ def train(train_loader, netG, netD, criterion, criterion_L1, optimizerG,
         if use_gpu:
             noise = noise.cuda()
         #noiseForViz = noise.resize_(batch_size, nz, 1, 1)
-        noise.normal_(-1, 1)
+        #noise.normal_(-1, 1)
         noisev = Variable(noise)
         fake = netG(noisev)
-        #fakeForViz = fake.detach().normal_(0, 1)
-        fakeForViz = fake
         if args.verbose:
             print('Fake img size: ')
             print(fake.data.shape)
@@ -300,11 +298,14 @@ def train(train_loader, netG, netD, criterion, criterion_L1, optimizerG,
         if args.verbose:
             print('Output size - fake: ')
             print(output.data.shape)
-        errD_fake = criterion(output, labelv)
+        if args.useL1:
+            errL1 = criterion_L1(input.normal_(-1, 1), fake.detach())
+            errD_fake = criterion(output, labelv) + args.Lambda * errL1
+        else:
+            errD_fake = criterion(output, labelv)
         errD_fake.backward()
         D_G_z1 = output.data.mean()
         if args.useL1:
-            errL1 = criterion_L1(input, fake.detach())
             errD = errD_real + errD_fake + args.Lambda * errL1
         else:
             errD = errD_real + errD_fake
@@ -340,7 +341,7 @@ def train(train_loader, netG, netD, criterion, criterion_L1, optimizerG,
             vutils.save_image(fake.data,
                     '%s/fake_samples_epoch_%03d.png' % (args.save_dir, epoch),
                     normalize=True)
-            utils.displaySamples(real_cpu, fakeForViz, gtForViz, use_gpu)
+            utils.displaySamples(real_cpu, fake, gtForViz, use_gpu)
 
 
 if __name__ == '__main__':
