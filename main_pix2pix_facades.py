@@ -183,22 +183,18 @@ def main():
 
     # Define loss function (criterion) and optimizer
     criterion = nn.BCELoss()
+    criterion_L1 = nn.L1Loss()
 
     input = torch.FloatTensor(args.batchSize, 3, args.imageSize, args.imageSize)
     noise = torch.FloatTensor(args.batchSize, 3, args.imageSize, args.imageSize)
     fixed_noise = torch.FloatTensor(args.batchSize, nz, 1, 1).normal_(0, 1)
     label = torch.FloatTensor(args.batchSize)
-    if args.labelSmoothing:
-        real_label = random.uniform(0.7, 1.2)
-        fake_label = random.uniform(0.0, 0.3)
-    else:
-        real_label = 1
-        fake_label = 0
 
     if use_gpu:
         netD.cuda()
         netG.cuda()
         criterion.cuda()
+        criterion_L1.cuda()
         input, label = input.cuda(), label.cuda()
         noise, fixed_noise = noise.cuda(), fixed_noise.cuda()
 
@@ -215,19 +211,27 @@ def main():
         # Train for one epoch
         train(dataloaders['train'], netG, netD, criterion, optimizerG,
               optimizerD, epoch, input, noise, fixed_noise, label,
-              real_label, fake_label, nz)
+              nz)
 
         # Save checkpoints
         #torch.save(netG.state_dict(), '%s/netG_epoch_%d.pth' % (args.save_dir, epoch))
         #torch.save(netD.state_dict(), '%s/netD_epoch_%d.pth' % (args.save_dir, epoch))
 
 def train(train_loader, netG, netD, criterion, optimizerG, optimizerD, epoch,
-        input, noise, fixed_noise, label, real_label, fake_label, nz):
+        input, noise, fixed_noise, label, nz):
     '''
         Run one training epoch
     '''
 
     for i, (img, gt) in enumerate(train_loader):
+
+        # Generate smoothed labels
+        if args.labelSmoothing:
+            real_label = random.uniform(0.7, 1.2)
+            fake_label = random.uniform(0.0, 0.3)
+        else:
+            real_label = 1
+            fake_label = 0
 
         ############################
         # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
@@ -273,7 +277,7 @@ def train(train_loader, netG, netD, criterion, optimizerG, optimizerD, epoch,
         if use_gpu:
             noise = noise.cuda()
         #noiseForViz = noise.resize_(batch_size, nz, 1, 1)
-        #noise.normal_(-1, 1)
+        noise.normal_(-1, 1)
         noisev = Variable(noise)
         fake = netG(noisev)
         if args.verbose:
